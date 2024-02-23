@@ -1,9 +1,7 @@
 from lammps import lammps
 import random
-import os
 from mpi4py import MPI
 
-# ********************************************************************#
 # Variables needed for the tools module
 _xhi = 3
 _xlo = 0
@@ -15,13 +13,12 @@ _radiusBuffer = 0.05
 _lammpsTimestep = 0.001  # in picoseconds (10^-15)
 _lammpsTimePerSnapshot = 3  # in picoseconds (10^-15)
 _lammpsTimestepsPerSnapshot = _lammpsTimePerSnapshot / _lammpsTimestep
-
-
 # ********************************************************************#
 class _MDRunner:
 
-    def __init__(self, lammpsInstance: lammps, mpiComm: MPI.Comm):
-        self.lammps = lammpsInstance
+    def __init__(self, mpiComm: MPI.Comm):
+        super().__init__()
+        self.lammps = lammps(cmdargs=["-screen", "none", "-log", "none"])
         self.mpiComm = mpiComm
         self.rank = self.mpiComm.Get_rank()
         self.mpiSize = self.mpiComm.Get_size()
@@ -58,6 +55,14 @@ class _MDRunner:
         # setup basic lammps commands
         self.lammps.command(f"timestep %f" % (_lammpsTimestep))
         self.totalNumberTimesteps = self.numberConfigs * _lammpsTimestepsPerSnapshot
+
+    def __createReferenceConfiguration(self):
+        # Create a reference of the perfect crystal by dumping
+        # the configuration at the beginning of the simulation
+        self.lammps.command(
+            f"dump referenceDump all xyz 1 ./pos_ref.dat")
+        self.lammps.command("run 0")
+        self.lammps.command("undump referenceDump")
 
     def __createDefect(self):
         # Either delete or add atoms to create the defect
@@ -140,7 +145,7 @@ class _MDRunner:
         self.lammps.command("reset_timestep 0")
         self.lammps.command(
             f"dump snapshotDump all xyz %d %s/configuration*.lammpstrj"
-            % (_lammpsTimestepsPerSnapshot, self.tempDataFolder)
+            % (_lammpsTimestepsPerSnapshot, self.dataFolder)
         )
 
         # Run the dynamics for the desired number of timesteps
@@ -148,7 +153,7 @@ class _MDRunner:
         self.lammps.command("undump snapshotDump")
         self.lammps.command("unfix 1")
 
-    def findCofigurations(
+    def findConfigurations(
         self,
         defectSize: int,
         numberConfigs: int,
@@ -158,49 +163,16 @@ class _MDRunner:
     ):
         # This function will find the best configurations of the defect type
         self.defectSize = defectSize
-        self.defectRegionRadius = self.defectSize / 2 + _radiusBuffer
+        self.defectRegionRadius = self.defectSize ** (1/3) + _radiusBuffer
         self.numberConfigs = numberConfigs
         self.inputLammpsFilename = inputLammpsScript
         self.latticeParameter = latticeParameter
         self.equilibrationTemp = equilibrationTemp
         self.__setupLammps()
-        self.__createDefect()
-        self.__runDynamics()
-
-
-# ********************************************************************#
-# def OPLDRunner():
-
-#   def __init__(self,lammps):
-#     self.lammps = lammps
-# ********************************************************************#
-# def plotter():
-
-
-#   def __init__(self,lammps):
-#     self.lammps = lammps
-# ********************************************************************#
-# This class will house all the necessary tools for the activation relaxation optimizer
-class Avo(_MDRunner):
-
-    def __init__(self, lammpsInstance: lammps, keepData: bool, mpiComm: MPI.Comm):
-        self.keepData = keepData
-        super().__init__(lammpsInstance, mpiComm)
-        self.__CreateTempDataFolder()
-
-    def __del__(self):
+        self.__createReferenceConfiguration()
+        if (self.configurationState):
+            self.__createDefect()
+            self.__runDynamics()
         self.lammps.close()
-        self.__ManageTempDataFolder()
 
-    def __ManageTempDataFolder(self):
-        # Remove the temporary folder and its contents
-        if not self.keepData:
-            if os.path.exists(self.tempDataFolder):
-                os.rmdir(self.tempDataFolder)
-
-    def __CreateTempDataFolder(self):
-        # Create a temporary folder to store the data
-        self.tempDataFolder = "./tempData"
-        if not os.path.exists(self.tempDataFolder):
-            os.makedirs(self.tempDataFolder)
-        return self.tempDataFolder
+# ********************************************************************#

@@ -8,9 +8,9 @@
 #  - Activation Energy histogram (each configuration)
 
 import argparse
-import tools
 from lammps import lammps
 from mpi4py import MPI
+from avo import Avo
 
 # Initialize MPI
 comm = MPI.COMM_WORLD
@@ -21,7 +21,14 @@ comm = MPI.COMM_WORLD
 parser = argparse.ArgumentParser()
 parser.add_argument("defect_size", type=int, help="size of defect to analyze")
 parser.add_argument(
-    "--keep_data", type=bool, default=True, help="keep data files after analysis"
+    "--output_dir",
+    type=str,
+    help="output directory otherwise ./tempData will be created",
+)
+parser.add_argument(
+    "--data_dir",
+    type=str,
+    help="data directory ready for saddle point searching (skips condfiguration generation)",
 )
 parser.add_argument(
     "lammps_filename", type=str, help="lammps input file for perfect crystal"
@@ -38,22 +45,33 @@ parser.add_argument(
 parser.add_argument(
     "--equilibration_temp",
     type=float,
-    default=800,
-    help="temperature to equilibrate to",
+    default=800.0,
+    help="temperature (K) to equilibrate to",
 )
 
 args = parser.parse_args()
 
 defect_size = args.defect_size
-keepData = args.keep_data
+output_dir = args.output_dir
+data_dir = args.data_dir
 lammps_filename = args.lammps_filename
 lattice_parameter = args.lattice_parameter
 number_configs = args.number_configurations
 equilibration_temp = args.equilibration_temp
 
-lmp = lammps()
-avo = tools.Avo(lmp, keepData, comm)
-# First determine the best possible configurations of the defect type
-avo.findCofigurations(
-    defect_size, number_configs, lammps_filename, lattice_parameter, equilibration_temp
+avo = Avo(
+    mpiComm=comm,
+    resultsDir=output_dir,
+    dataDir=data_dir,
 )
+# First determine the best possible configurations of the defect type
+avo.findConfigurations(
+    defect_size,
+    number_configs,
+    lammps_filename,
+    lattice_parameter,
+    equilibration_temp,
+)
+
+if avo.rank == 0:
+    avo.createOPLDInputFile()
