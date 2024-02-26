@@ -18,7 +18,7 @@ class _MDRunner:
 
     def __init__(self, mpiComm: MPI.Comm):
         super().__init__()
-        self.lammps = lammps(cmdargs=["-screen", "none", "-log", "none"])
+        self.lammps = lammps(cmdargs=["-log", "none"])
         self.mpiComm = mpiComm
         self.rank = self.mpiComm.Get_rank()
         self.mpiSize = self.mpiComm.Get_size()
@@ -66,13 +66,17 @@ class _MDRunner:
 
     def __createDefect(self):
         # Either delete or add atoms to create the defect
-        print(f"Creating defect of size {self.defectSize}")
+        if (self.rank == 0):
+            print(f"Creating defect of size {self.defectSize}")
+
         if self.defectSize > 0:
             self.__addAtoms(self.defectSize)
-            print(f"Created interstitial defect of size {self.defectSize}")
+            if (self.rank == 0):
+                print(f"Created interstitial defect of size {self.defectSize}")
         elif self.defectSize < 0:
-            self.__deleteAtoms(self.defectSize)
-            print(f"Deleted vacancy defect of size {-self.defectSize}")
+            self.__deleteAtoms(abs(self.defectSize))
+            if (self.rank == 0):
+                print(f"Deleted vacancy defect of size {-self.defectSize}")
 
     def __addAtoms(self, numberAtomsAdd: int):
         # Add atoms to create a defect cluster
@@ -99,35 +103,57 @@ class _MDRunner:
             x = self.mpiComm.bcast(x, root=0)
             y = self.mpiComm.bcast(y, root=0)
             z = self.mpiComm.bcast(z, root=0)
-            print(
-                f"Rank {self.rank} selected type {randomType} at position {x} {y} {z}"
-            )
+            # print(
+            #     f"Rank {self.rank} selected type {randomType} at position {x} {y} {z}"
+            # )
             self.lammps.command(
                 "create_atoms %d single %f %f %f units lattice" % (randomType, x, y, z)
             )
 
     def __deleteAtoms(self, numberAtomDelete: int):
+        # Update the MPI ranks with correct data
+        self.crystalCenterPosition = self.mpiComm.bcast(self.crystalCenterPosition, root=0)
+        self.defectRegionRadius = self.mpiComm.bcast(self.defectRegionRadius, root=0)
         # Delete atoms which are near crystal center
-        self.lammps.command(
-            f"region defectRegion sphere %f %f %f %f units lattice"
-            % (
-                self.crystalCenterPosition[0],
-                self.crystalCenterPosition[1],
-                self.crystalCenterPosition[2],
-                self.defectRegionRadius,
-            )
-        )
-        self.lammps.command("group defectGroup region defectRegion")
-        self.lammps.command(
-            f"delete_atoms random count %d yes defectGroup defectRegion %d"
-            % (numberAtomDelete, random.randint(1, 1000000))
-        )
+        self._createDeleteGroup(numberAtomDelete)
+        self.lammps.command(f"delete_atoms group deleteGroup")
+        self.lammps.command("group deleteGroup clear")
+
+    def _createDeleteGroup(self, numberAtomDelete: int):
+        # Create a group of atoms within the delete sphere region
+        deleteGroupIds = []
+        atomPositions = self.lammps.gather_atoms("x", 1, 3)
+        natoms = self.lammps.get_natoms()
+
+        if (self.rank == 0):
+            # Get ids of all atoms in the region
+            groupIds = []
+            thresholdRR = self.defectRegionRadius * self.defectRegionRadius
+            for atomId in range(natoms):
+                x = atomPositions[atomId*3 + 0] / self.latticeParameter
+                y = atomPositions[atomId*3 + 1] / self.latticeParameter
+                z = atomPositions[atomId*3 + 2] / self.latticeParameter
+                deltaRR = (x - self.crystalCenterPosition[0])*(x - self.crystalCenterPosition[0]) +\
+                        (y - self.crystalCenterPosition[1])*(y - self.crystalCenterPosition[1]) +\
+                        (z - self.crystalCenterPosition[2])*(z - self.crystalCenterPosition[2])
+                if deltaRR <= thresholdRR:
+                    groupIds.append(atomId + 1)
+
+            # Select random ids within the delteGroupIds list
+            while (len(deleteGroupIds) < numberAtomDelete):
+                randomId = random.choice(groupIds)
+                if randomId not in deleteGroupIds:
+                    deleteGroupIds.append(randomId)
+
+        # Bcast number of ids and create group
+        deleteGroupIds = self.mpiComm.bcast(deleteGroupIds, root=0)
+        for id in deleteGroupIds:
+            self.lammps.command(f"group deleteGroup id {id}")
+
 
     def __runDynamics(self):
-        print(
-            f"Running dynamics for {self.totalNumberTimesteps} timesteps to find %d configurations"
-            % (self.numberConfigs)
-        )
+        if (self.rank == 0):
+            print(f"Running dynamics for {self.totalNumberTimesteps} timesteps to find %d configurations"% (self.numberConfigs))
         # First minimize the initial configuration
         self.lammps.command("minimize 1.0e-8 1.0e-8 1000 10000")
         # Equilibrate the system to the desired temperature
@@ -163,7 +189,7 @@ class _MDRunner:
     ):
         # This function will find the best configurations of the defect type
         self.defectSize = defectSize
-        self.defectRegionRadius = self.defectSize ** (1/3) + _radiusBuffer
+        self.defectRegionRadius = abs(self.defectSize) ** (1/3) + _radiusBuffer
         self.numberConfigs = numberConfigs
         self.inputLammpsFilename = inputLammpsScript
         self.latticeParameter = latticeParameter

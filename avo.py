@@ -43,6 +43,7 @@ class Avo(_MDRunner, _OPLDRunner):
                 self.dataFolder = os.getcwd() + "/tempData"
             else:
                 self.dataFolder = os.path.abspath(outputDir)
-            print(f"Creating data folder {self.dataFolder}")
             if not os.path.exists(self.dataFolder):
-                os.makedirs(self.dataFolder)
+                if (self.mpiComm.Get_rank() == 0):
+                    print(f"Creating data folder {self.dataFolder}")
+                    os.makedirs(self.dataFolder)
