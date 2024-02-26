@@ -41,5 +41,5 @@ trap handle_interrupt SIGINT
 for file in ${directory}/*.lammpstrj
 do
     echo "Running dimer search for ${file}" >> dimer_results.log
-    mpirun ${opld_executable} ${lammps_input} ${file} >> dimer_results.log
+    mpirun ${opld_executable} ${lammps_input} ${file} >> ${directory}/dimer_results.log
 done
