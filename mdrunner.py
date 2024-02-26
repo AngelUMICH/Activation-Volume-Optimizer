@@ -10,6 +10,7 @@ _ylo = 1
 _zhi = 5
 _zlo = 2
 _radiusBuffer = 0.05
+_randomDisplacement = 0.2
 _lammpsTimestep = 0.001  # in picoseconds (10^-15)
 _lammpsTimePerSnapshot = 3  # in picoseconds (10^-15)
 _lammpsTimestepsPerSnapshot = _lammpsTimePerSnapshot / _lammpsTimestep
@@ -80,20 +81,22 @@ class _MDRunner:
 
     def __addAtoms(self, numberAtomsAdd: int):
         # Add atoms to create a defect cluster
-        for _ in range(numberAtomsAdd):
+        nlocal = self.lammps.extract_global("nlocal")
+        atomPositions = self.lammps.gather_atoms("x", 1, 3)
+        closestAtomIds = self.__findClosestAtoms(atomPositions, numberAtomsAdd)
+        for id in closestAtomIds:
             if self.rank == 0:
-                nlocal = self.lammps.extract_global("nlocal")
                 randomAtomId = random.randint(0, nlocal - 1)
                 randomType = self.atomTypes[randomAtomId]
                 x = (
                     random.random() - 0.5
-                ) * self.defectRegionRadius * 2 + self.crystalCenterPosition[0]
+                ) * _randomDisplacement * 2 + atomPositions[id*3 + 0]
                 y = (
                     random.random() - 0.5
-                ) * self.defectRegionRadius * 2 + self.crystalCenterPosition[1]
+                ) * _randomDisplacement * 2 + atomPositions[id*3 + 1]
                 z = (
                     random.random() - 0.5
-                ) * self.defectRegionRadius * 2 + self.crystalCenterPosition[2]
+                ) * _randomDisplacement * 2 + atomPositions[id*3 + 2]
             elif self.rank != 0:
                 randomType = None
                 x = None
@@ -103,11 +106,9 @@ class _MDRunner:
             x = self.mpiComm.bcast(x, root=0)
             y = self.mpiComm.bcast(y, root=0)
             z = self.mpiComm.bcast(z, root=0)
-            # print(
-            #     f"Rank {self.rank} selected type {randomType} at position {x} {y} {z}"
-            # )
+
             self.lammps.command(
-                "create_atoms %d single %f %f %f units lattice" % (randomType, x, y, z)
+                "create_atoms %d single %f %f %f units box" % (randomType, x, y, z)
             )
 
     def __deleteAtoms(self, numberAtomDelete: int):
@@ -123,33 +124,33 @@ class _MDRunner:
         # Create a group of atoms within the delete sphere region
         deleteGroupIds = []
         atomPositions = self.lammps.gather_atoms("x", 1, 3)
-        natoms = self.lammps.get_natoms()
 
         if (self.rank == 0):
-            # Get ids of all atoms in the region
-            groupIds = []
-            thresholdRR = self.defectRegionRadius * self.defectRegionRadius
-            for atomId in range(natoms):
-                x = atomPositions[atomId*3 + 0] / self.latticeParameter
-                y = atomPositions[atomId*3 + 1] / self.latticeParameter
-                z = atomPositions[atomId*3 + 2] / self.latticeParameter
-                deltaRR = (x - self.crystalCenterPosition[0])*(x - self.crystalCenterPosition[0]) +\
-                        (y - self.crystalCenterPosition[1])*(y - self.crystalCenterPosition[1]) +\
-                        (z - self.crystalCenterPosition[2])*(z - self.crystalCenterPosition[2])
-                if deltaRR <= thresholdRR:
-                    groupIds.append(atomId + 1)
+            deleteGroupIds = self.__findClosestAtoms(atomPositions, numberAtomDelete)
 
-            # Select random ids within the delteGroupIds list
-            while (len(deleteGroupIds) < numberAtomDelete):
-                randomId = random.choice(groupIds)
-                if randomId not in deleteGroupIds:
-                    deleteGroupIds.append(randomId)
-
-        # Bcast number of ids and create group
+        # Bcast ids and create group
         deleteGroupIds = self.mpiComm.bcast(deleteGroupIds, root=0)
         for id in deleteGroupIds:
             self.lammps.command(f"group deleteGroup id {id}")
 
+    def __findClosestAtoms(self, positions, natoms) -> list:
+        # Find the closest natoms to the crystal center
+        closestAtoms = [(0,1_000_000) for _ in range(natoms)] # (a,b) a= id, b= distance
+        natoms = self.lammps.get_natoms()
+
+        for atomId in range(natoms):
+                x = positions[atomId*3 + 0] / self.latticeParameter
+                y = positions[atomId*3 + 1] / self.latticeParameter
+                z = positions[atomId*3 + 2] / self.latticeParameter
+                deltaRR = (x - self.crystalCenterPosition[0])*(x - self.crystalCenterPosition[0]) +\
+                        (y - self.crystalCenterPosition[1])*(y - self.crystalCenterPosition[1]) +\
+                        (z - self.crystalCenterPosition[2])*(z - self.crystalCenterPosition[2])
+                if deltaRR < closestAtoms[-1][1]:
+                    closestAtoms[-1] = (atomId + 1, deltaRR)
+                    closestAtoms.sort(key=lambda x: x[1])
+
+        # Return a list of only the ids of closestAtoms list
+        return [atom[0] for atom in closestAtoms]
 
     def __runDynamics(self):
         if (self.rank == 0):
@@ -168,7 +169,7 @@ class _MDRunner:
         self.lammps.command("run 2000")
 
         # Now setup the dumpfiles of each snapshot for dimer searches
-        self.lammps.command("reset_timestep 0")
+        self.lammps.command("reset_timestep 1")
         self.lammps.command(
             f"dump snapshotDump all xyz %d %s/configuration*.lammpstrj"
             % (_lammpsTimestepsPerSnapshot, self.dataFolder)
