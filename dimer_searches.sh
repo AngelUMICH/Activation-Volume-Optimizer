@@ -1,13 +1,16 @@
 #!/bin/bash
 
 # Author: Angel Chavira
-# Date: 2/23/2024s
+# Date: 2/23/2024
 
-# This script is used to rum the dimer searches for all the configurations found in the
+# This script is used to run the dimer searches for all the configurations found in the
 # given directory ending with the '.lammpstrj' suffix. 
 
 # The configuration _finder.py python script should be first be called to create all the 
 # configurations wanted to be used in the dimer searches.
+
+script_path=$(realpath $0)
+opld_executable=$(dirname $script_path)/opldSrc/opld
 
 # Ask where to find certain critical files
 echo "Which directory would you like to run the dimer searches in?"
@@ -26,15 +29,6 @@ if [ ! -f "${lammps_input}" ]; then
     exit 1
 else
     echo "Using lammps input file located at ${lammps_input}"
-fi
-
-echo "Where is the opld execuatble located?"
-read opld_executable
-if [ ! -f "${opld_executable}" ]; then
-    echo "Executable ${opld_executable} does not exist"
-    exit 1
-else
-    echo "Using opld executable located at ${opld_executable}"
 fi
 
 handle_interrupt() {
