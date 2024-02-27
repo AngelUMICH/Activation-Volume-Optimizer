@@ -1,4 +1,4 @@
-# This script is used to plot the results of the dimer searces for 
+# This script is used to plot the results of the dimer searces for
 # a defect cluster or point defect. The Analysis class takes in the
 # data file from OPLD and creates a histogram of the transition states.
 

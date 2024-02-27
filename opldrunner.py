@@ -1,6 +1,3 @@
-import os
-import subprocess as sp
-
 class _OPLDRunner:
 
     def __init__(self):
@@ -42,7 +39,7 @@ class _OPLDRunner:
     def __modifyOPLDParameters(self):
         # Modify the parameters for the OPLD code
         self.opldParameters["RLAT"] = self.latticeParameter
-        self.opldParameters["RBOX"] = self.crystalCenterPosition[0]*2
+        self.opldParameters["RBOX"] = self.crystalCenterPosition[0] * 2
 
     def createOPLDInputFile(self):
 

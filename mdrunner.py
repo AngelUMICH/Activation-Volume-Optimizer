@@ -14,6 +14,8 @@ _randomDisplacement = 0.2
 _lammpsTimestep = 0.001  # in picoseconds (10^-15)
 _lammpsTimePerSnapshot = 3  # in picoseconds (10^-15)
 _lammpsTimestepsPerSnapshot = _lammpsTimePerSnapshot / _lammpsTimestep
+
+
 # ********************************************************************#
 class _MDRunner:
 
@@ -60,23 +62,22 @@ class _MDRunner:
     def __createReferenceConfiguration(self):
         # Create a reference of the perfect crystal by dumping
         # the configuration at the beginning of the simulation
-        self.lammps.command(
-            f"dump referenceDump all xyz 1 ./pos_ref.dat")
+        self.lammps.command(f"dump referenceDump all xyz 1 ./pos_ref.dat")
         self.lammps.command("run 0")
         self.lammps.command("undump referenceDump")
 
     def __createDefect(self):
         # Either delete or add atoms to create the defect
-        if (self.rank == 0):
+        if self.rank == 0:
             print(f"Creating defect of size {self.defectSize}")
 
         if self.defectSize > 0:
             self.__addAtoms(self.defectSize)
-            if (self.rank == 0):
+            if self.rank == 0:
                 print(f"Created interstitial defect of size {self.defectSize}")
         elif self.defectSize < 0:
             self.__deleteAtoms(abs(self.defectSize))
-            if (self.rank == 0):
+            if self.rank == 0:
                 print(f"Deleted vacancy defect of size {-self.defectSize}")
 
     def __addAtoms(self, numberAtomsAdd: int):
@@ -88,15 +89,15 @@ class _MDRunner:
             if self.rank == 0:
                 randomAtomId = random.randint(0, nlocal - 1)
                 randomType = self.atomTypes[randomAtomId]
-                x = (
-                    random.random() - 0.5
-                ) * _randomDisplacement * 2 + atomPositions[id*3 + 0]
-                y = (
-                    random.random() - 0.5
-                ) * _randomDisplacement * 2 + atomPositions[id*3 + 1]
-                z = (
-                    random.random() - 0.5
-                ) * _randomDisplacement * 2 + atomPositions[id*3 + 2]
+                x = (random.random() - 0.5) * _randomDisplacement * 2 + atomPositions[
+                    id * 3 + 0
+                ]
+                y = (random.random() - 0.5) * _randomDisplacement * 2 + atomPositions[
+                    id * 3 + 1
+                ]
+                z = (random.random() - 0.5) * _randomDisplacement * 2 + atomPositions[
+                    id * 3 + 2
+                ]
             elif self.rank != 0:
                 randomType = None
                 x = None
@@ -113,7 +114,9 @@ class _MDRunner:
 
     def __deleteAtoms(self, numberAtomDelete: int):
         # Update the MPI ranks with correct data
-        self.crystalCenterPosition = self.mpiComm.bcast(self.crystalCenterPosition, root=0)
+        self.crystalCenterPosition = self.mpiComm.bcast(
+            self.crystalCenterPosition, root=0
+        )
         self.defectRegionRadius = self.mpiComm.bcast(self.defectRegionRadius, root=0)
         # Delete atoms which are near crystal center
         self._createDeleteGroup(numberAtomDelete)
@@ -125,7 +128,7 @@ class _MDRunner:
         deleteGroupIds = []
         atomPositions = self.lammps.gather_atoms("x", 1, 3)
 
-        if (self.rank == 0):
+        if self.rank == 0:
             deleteGroupIds = self.__findClosestAtoms(atomPositions, numberAtomDelete)
 
         # Bcast ids and create group
@@ -135,26 +138,36 @@ class _MDRunner:
 
     def __findClosestAtoms(self, positions, natoms) -> list:
         # Find the closest natoms to the crystal center
-        closestAtoms = [(0,1_000_000) for _ in range(natoms)] # (a,b) a= id, b= distance
+        closestAtoms = [
+            (0, 1_000_000) for _ in range(natoms)
+        ]  # (a,b) a= id, b= distance
         natoms = self.lammps.get_natoms()
 
         for atomId in range(natoms):
-                x = positions[atomId*3 + 0] / self.latticeParameter
-                y = positions[atomId*3 + 1] / self.latticeParameter
-                z = positions[atomId*3 + 2] / self.latticeParameter
-                deltaRR = (x - self.crystalCenterPosition[0])*(x - self.crystalCenterPosition[0]) +\
-                        (y - self.crystalCenterPosition[1])*(y - self.crystalCenterPosition[1]) +\
-                        (z - self.crystalCenterPosition[2])*(z - self.crystalCenterPosition[2])
-                if deltaRR < closestAtoms[-1][1]:
-                    closestAtoms[-1] = (atomId + 1, deltaRR)
-                    closestAtoms.sort(key=lambda x: x[1])
+            x = positions[atomId * 3 + 0] / self.latticeParameter
+            y = positions[atomId * 3 + 1] / self.latticeParameter
+            z = positions[atomId * 3 + 2] / self.latticeParameter
+            deltaRR = (
+                (x - self.crystalCenterPosition[0])
+                * (x - self.crystalCenterPosition[0])
+                + (y - self.crystalCenterPosition[1])
+                * (y - self.crystalCenterPosition[1])
+                + (z - self.crystalCenterPosition[2])
+                * (z - self.crystalCenterPosition[2])
+            )
+            if deltaRR < closestAtoms[-1][1]:
+                closestAtoms[-1] = (atomId + 1, deltaRR)
+                closestAtoms.sort(key=lambda x: x[1])
 
         # Return a list of only the ids of closestAtoms list
         return [atom[0] for atom in closestAtoms]
 
     def __runDynamics(self):
-        if (self.rank == 0):
-            print(f"Running dynamics for {self.totalNumberTimesteps} timesteps to find %d configurations"% (self.numberConfigs))
+        if self.rank == 0:
+            print(
+                f"Running dynamics for {self.totalNumberTimesteps} timesteps to find %d configurations"
+                % (self.numberConfigs)
+            )
         # First minimize the initial configuration
         self.lammps.command("minimize 1.0e-8 1.0e-8 1000 10000")
         # Equilibrate the system to the desired temperature
@@ -190,16 +203,14 @@ class _MDRunner:
     ):
         # This function will find the best configurations of the defect type
         self.defectSize = defectSize
-        self.defectRegionRadius = abs(self.defectSize) ** (1/3) + _radiusBuffer
+        self.defectRegionRadius = abs(self.defectSize) ** (1 / 3) + _radiusBuffer
         self.numberConfigs = numberConfigs
         self.inputLammpsFilename = inputLammpsScript
         self.latticeParameter = latticeParameter
         self.equilibrationTemp = equilibrationTemp
         self.__setupLammps()
         self.__createReferenceConfiguration()
-        if (self.configurationState):
+        if self.configurationState:
             self.__createDefect()
             self.__runDynamics()
         self.lammps.close()
-
-# ********************************************************************#
