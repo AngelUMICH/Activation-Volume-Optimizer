@@ -16,7 +16,7 @@ To obtain the average activation energies of a cluster or a point defect three s
   Use the 'plotting' script to create the histogram. Use -h to see required arguments.
 
 **Use the 'run' bash shell script to automate the processes of obtaining the activation energy**
-Before using the bash script you must first compile the OPLD executable.
+Before using the bash script you must first compile the OPLD executable and install the LAMMPS python package to your environment.
 
 ## What You Will Need
 You just need one thing, a LAMMPS script which builds a perfect crystal. Make sure that the crystal is equilibrated through the script.
