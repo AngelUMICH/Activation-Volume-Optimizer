@@ -21,7 +21,8 @@ class Analysis:
                 if "SPS" in line:
                     # Parse the activation energy from the line
                     energy = line.split()[-1]
-                    self.activationEnergies.append(float(energy))
+                    if (float(energy) < 10.0):
+                        self.activationEnergies.append(float(energy))
         f.close()
 
         # Get the average activation energy

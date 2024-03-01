@@ -47,4 +47,4 @@ mpirun python3 ${config_finder} ${cluster_size} ${lammps_input} ${lattice_consta
 echo -e "${configurations_dir}\n${lammps_input}" | ${dimer_search_script}
 
 # Plot the activation energies
-python3 ${histo_plotter} ${configurations_dir} ${temperature}
+python3 ${histo_plotter} ${configurations_dir}/dimer_result.log ${temperature}
