@@ -89,13 +89,19 @@ class _MDRunner:
             if self.rank == 0:
                 randomAtomId = random.randint(0, nlocal - 1)
                 randomType = self.atomTypes[randomAtomId]
-                x = (random.random() - 0.5) * _randomDisplacement * 2 + atomPositions[
+                x = (
+                    random.random() - 0.5
+                ) * _randomDisplacement * self.latticeParameter * 2 + atomPositions[
                     id * 3 + 0
                 ]
-                y = (random.random() - 0.5) * _randomDisplacement * 2 + atomPositions[
+                y = (
+                    random.random() - 0.5
+                ) * _randomDisplacement * self.latticeParameter * 2 + atomPositions[
                     id * 3 + 1
                 ]
-                z = (random.random() - 0.5) * _randomDisplacement * 2 + atomPositions[
+                z = (
+                    random.random() - 0.5
+                ) * _randomDisplacement * self.latticeParameter * 2 + atomPositions[
                     id * 3 + 2
                 ]
             elif self.rank != 0:

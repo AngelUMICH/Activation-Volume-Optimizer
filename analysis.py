@@ -21,7 +21,7 @@ class Analysis:
                 if "SPS" in line:
                     # Parse the activation energy from the line
                     energy = line.split()[-1]
-                    if (float(energy) < 10.0):
+                    if float(energy) < 10.0:
                         self.activationEnergies.append(float(energy))
         f.close()
 
