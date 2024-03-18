@@ -2,12 +2,13 @@ PROGRAM MAIN
 
   USE MPI
   USE LMP_DRIVER
-  USE SYSTEM, ONLY: TJOB, IERR, RANK, NPROCS, NDIMER
+  USE SYSTEM, ONLY: TJOB, IERR, RANK, NPROCS, NDIMER, avRadiusEntry
 
   IMPLICIT NONE
 
   call getarg(1, inputLAMMPSFilename)
   call getarg(2, configurationFilename)
+  call getarg(3, avRadiusEntry)
 
   CALL MPI_INIT(IERR)
   CALL MPI_COMM_RANK(MPI_COMM_WORLD, RANK, IERR)

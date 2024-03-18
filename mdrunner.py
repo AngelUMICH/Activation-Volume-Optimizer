@@ -9,8 +9,7 @@ _yhi = 4
 _ylo = 1
 _zhi = 5
 _zlo = 2
-_radiusBuffer = 0.05
-_randomDisplacement = 0.2
+_randomDisplacement = 0.2 # lattice parameter
 _lammpsTimestep = 0.001  # in picoseconds (10^-15)
 _lammpsTimePerSnapshot = 3  # in picoseconds (10^-15)
 _lammpsTimestepsPerSnapshot = _lammpsTimePerSnapshot / _lammpsTimestep
@@ -27,6 +26,8 @@ class _MDRunner:
         self.mpiSize = self.mpiComm.Get_size()
 
     def __setupLammps(self):
+        # Needed to get scatter_atoms to work
+        self.lammps.command("atom_modify map array")
         # inputLammpsFilename is the filename of a minimum working lammps script
         self.lammps.file(self.inputLammpsFilename)
         self.atomTypes = self.lammps.extract_atom("type")
@@ -82,38 +83,36 @@ class _MDRunner:
 
     def __addAtoms(self, numberAtomsAdd: int):
         # Add atoms to create a defect cluster
-        nlocal = self.lammps.extract_global("nlocal")
+        nlocal = self.lammps.extract_global("nlocal") # used to select random atom type
         atomPositions = self.lammps.gather_atoms("x", 1, 3)
         closestAtomIds = self.__findClosestAtoms(atomPositions, numberAtomsAdd)
+        # Pick a random <100> dumbbell direction for ints in Nickel
+        orientation = [0, 0, 0]
+        orientation[random.randint(0, 2)] = 1
+        orientation = self.mpiComm.bcast(orientation, root=0) # synchronize orientation
+        if self.rank == 0:
+            print(f"Orientation of dumbbell: {orientation}")
+            print("Modify code for orientation other than <100>")
+        # New atom positions
+        newAtoms = []
         for id in closestAtomIds:
-            if self.rank == 0:
-                randomAtomId = random.randint(0, nlocal - 1)
-                randomType = self.atomTypes[randomAtomId]
-                x = (
-                    random.random() - 0.5
-                ) * _randomDisplacement * self.latticeParameter * 2 + atomPositions[
-                    id * 3 + 0
-                ]
-                y = (
-                    random.random() - 0.5
-                ) * _randomDisplacement * self.latticeParameter * 2 + atomPositions[
-                    id * 3 + 1
-                ]
-                z = (
-                    random.random() - 0.5
-                ) * _randomDisplacement * self.latticeParameter * 2 + atomPositions[
-                    id * 3 + 2
-                ]
-            elif self.rank != 0:
-                randomType = None
-                x = None
-                y = None
-                z = None
-            randomType = self.mpiComm.bcast(randomType, root=0)
-            x = self.mpiComm.bcast(x, root=0)
-            y = self.mpiComm.bcast(y, root=0)
-            z = self.mpiComm.bcast(z, root=0)
+            randomAtomId = random.randint(0, nlocal - 1)
+            randomType = self.atomTypes[randomAtomId]
+            # Find location of new atom
+            x = atomPositions[id * 3 + 0] + _randomDisplacement * self.latticeParameter * orientation[0]
+            y = atomPositions[id * 3 + 1] + _randomDisplacement * self.latticeParameter * orientation[1]
+            z = atomPositions[id * 3 + 2] + _randomDisplacement * self.latticeParameter * orientation[2]
+            newAtoms.append((randomType, x, y, z))
+            # Find new location of original atom
+            atomPositions[id * 3 + 0] = x - _randomDisplacement * self.latticeParameter *  orientation[0] * 2
+            atomPositions[id * 3 + 1] = y - _randomDisplacement * self.latticeParameter *  orientation[1] * 2
+            atomPositions[id * 3 + 2] = z - _randomDisplacement * self.latticeParameter *  orientation[2] * 2
 
+        # Scatter new atom positions
+        self.lammps.scatter_atoms("x", 1, 3, atomPositions)
+        # Create the new atom. Create_atoms must be after scatter_atoms
+        for atom in newAtoms:
+            randomType, x, y, z = atom
             self.lammps.command(
                 "create_atoms %d single %f %f %f units box" % (randomType, x, y, z)
             )
@@ -123,7 +122,6 @@ class _MDRunner:
         self.crystalCenterPosition = self.mpiComm.bcast(
             self.crystalCenterPosition, root=0
         )
-        self.defectRegionRadius = self.mpiComm.bcast(self.defectRegionRadius, root=0)
         # Delete atoms which are near crystal center
         self._createDeleteGroup(numberAtomDelete)
         self.lammps.command(f"delete_atoms group deleteGroup")
@@ -209,7 +207,6 @@ class _MDRunner:
     ):
         # This function will find the best configurations of the defect type
         self.defectSize = defectSize
-        self.defectRegionRadius = abs(self.defectSize) ** (1 / 3) + _radiusBuffer
         self.numberConfigs = numberConfigs
         self.inputLammpsFilename = inputLammpsScript
         self.latticeParameter = latticeParameter

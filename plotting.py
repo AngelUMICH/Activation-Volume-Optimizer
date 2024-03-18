@@ -8,10 +8,10 @@ from analysis import Analysis
 
 # Parse the command line for the data file name
 parser = argparse.ArgumentParser()
-parser.add_argument("data_file", type=str, help="data file from OPLD")
+parser.add_argument("data_directory", type=str, help="data directory w/ energies")
 parser.add_argument("temperature", default=300.0, type=float, help="temperature in K")
 args = parser.parse_args()
-data_file = args.data_file
+data_file = args.data_directory
 temperature = args.temperature
 
 plotter = Analysis(data_file, temperature)

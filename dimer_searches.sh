@@ -31,15 +31,29 @@ else
     echo "Using lammps input file located at ${lammps_input}"
 fi
 
+echo "Up to what AV radius value should be used in the dimer searches?"
+read maxRadius
+if ! [[ $maxRadius =~ ^[0-9]+$ ]]; then
+    echo "Error: Radius must be an integer"
+    exit 1
+else
+    echo "Using a max radius of ${maxRadius}"
+fi
+
 handle_interrupt() {
     echo -e "\nInterrupt received, exiting..."
     exit 1
 }
 trap handle_interrupt SIGINT
 
-# Do the dimer searches
+# Do the dimer searches as a functon of radius
 for file in ${directory}/*.lammpstrj
 do
-    echo "Running dimer search for ${file}" >> dimer_results.log
-    mpirun ${opld_executable} ${lammps_input} ${file} >> ${directory}/dimer_results.log
+    echo "Running dimer search for ${file}"
+    
+    for radius in $(seq 2 1 ${maxRadius})
+    do
+        mpirun ${opld_executable} ${lammps_input} ${file} ${radius}>> ${directory}/dimer_results_radius_${radius}.log
+    done
+
 done

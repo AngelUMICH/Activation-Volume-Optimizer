@@ -10,7 +10,7 @@ class _OPLDRunner:
             "NTSTEP": 1,
             "NFREQ": 1,
             "NDEMAX": 5000,
-            "NAVMAX": 10000,
+            "NAVMAX": 20000,
             "NDIMER": 60,
             "TLAT": 1,
             "RLAT": 2.8553,
@@ -18,7 +18,7 @@ class _OPLDRunner:
             "PCUTR": 5.3,
             "DCUTR": 4.21,
             "DECUT": 0.26,
-            "NDSMAX": 800,
+            "NDSMAX": 600,
             "NDRMAX": 3,
             "RDIMER": 0.001,
             "FNRMAX": 0.100,
@@ -40,6 +40,7 @@ class _OPLDRunner:
         # Modify the parameters for the OPLD code
         self.opldParameters["RLAT"] = self.latticeParameter
         self.opldParameters["RBOX"] = self.crystalCenterPosition[0] * 2
+        self.opldParameters["TEMP"] = self.equilibrationTemp
 
     def createOPLDInputFile(self):
 

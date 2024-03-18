@@ -31,6 +31,9 @@ read lattice_constant
 echo "What is the temperature?"
 read temperature
 
+echo "What is max AV radius?"
+read radius
+
 configurations_dir=./configurations${cluster_size}
 
 handle_interrupt() {
@@ -44,7 +47,7 @@ mpirun python3 ${config_finder} ${cluster_size} ${lammps_input} ${lattice_consta
     --number_configurations 5 --equilibration_temp ${temperature}
 
 # Do dimer searches for all configurations in the configurations directory
-echo -e "${configurations_dir}\n${lammps_input}" | ${dimer_search_script}
+echo -e "${configurations_dir}\n${lammps_input}\n${radius}" | ${dimer_search_script}
 
 # Plot the activation energies
-python3 ${histo_plotter} ${configurations_dir}/dimer_result.log ${temperature}
+python3 ${histo_plotter} ${configurations_dir} ${temperature}

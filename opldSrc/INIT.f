@@ -62,6 +62,10 @@ SUBROUTINE SYS_INIT
   ALLOCATE (SEED(N))
   CALL RANDOM_SEED(GET=SEED)
 
+  !! Convert avradius string to float
+  read(avRadiusEntry, *) avRadius
+  if (rank == 0) write(*,*) "AV radius is ", avRadius
+
   BSTEP = 0
 
   FDCONV = 1.0D-5
